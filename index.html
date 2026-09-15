@@ -41,7 +41,12 @@
     button:hover { background: #2ea043; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     #status { margin-left: auto; font-size: 13px; color: #8b949e; }
-    #chart { flex: 1; width: 100%; min-height: 450px; }
+    #chart {
+      flex: 1;
+      width: 100%;
+      height: calc(100vh - 60px);
+      min-height: 500px;
+    }
     .error { color: #f85149 !important; }
   </style>
 </head>
@@ -74,12 +79,25 @@
     const btnLoad = document.getElementById('btnLoad');
     const statusEl = document.getElementById('status');
 
+    // Tạo chart với kích thước rõ ràng
     const chart = createChart(chartEl, {
-      timezone: 'Asia/Ho_Chi_Minh'
+      timezone: 'Asia/Ho_Chi_Minh',
+      width: chartEl.clientWidth,
+      height: chartEl.clientHeight
     });
 
     const candleSeries = chart.addSeries('candlestick');
-    const volumeSeries = chart.addSeries('histogram', { priceScaleId: 'volume' });
+
+    // Volume riêng
+    const volumeSeries = chart.addSeries('histogram', {
+      priceScaleId: 'volume',
+      priceFormat: { type: 'volume' }
+    });
+
+    // Cấu hình scale volume
+    chart.priceScale('volume').applyOptions({
+      scaleMargins: { top: 0.8, bottom: 0 }
+    });
 
     async function fetchBars(symbol, resolution, daysBack = 365) {
       const to = Math.floor(Date.now() / 1000);
@@ -131,10 +149,13 @@
         volumeSeries.setData(bars.map(b => ({
           time: b.time,
           value: b.volume,
-          color: b.close >= b.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)'
+          color: b.close >= b.open ? 'rgba(38,166,154,0.6)' : 'rgba(239,83,80,0.6)'
         })));
 
         chart.timeScale.fitContent();
+        // Ép resize lại
+        chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+
         statusEl.textContent = `${symbol} • ${bars.length} nến • ${new Date().toLocaleTimeString('vi-VN')}`;
       } catch (err) {
         console.error(err);
@@ -145,11 +166,16 @@
       }
     }
 
+    // Resize khi thay đổi kích thước cửa sổ
+    window.addEventListener('resize', () => {
+      chart.resize(chartEl.clientWidth, chartEl.clientHeight);
+    });
+
     btnLoad.addEventListener('click', loadChart);
     symbolInput.addEventListener('keydown', e => e.key === 'Enter' && loadChart());
 
     // Tự load lần đầu
-    loadChart();
+    setTimeout(loadChart, 300);
   </script>
 </body>
 </html>
