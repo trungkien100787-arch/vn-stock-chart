@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Biểu đồ Chứng khoán VN</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      padding: 10px 14px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    input, select, button {
+      padding: 7px 11px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: #e6edf3;
+      font-size: 14px;
+    }
+    input { width: 90px; text-transform: uppercase; }
+    button {
+      background: #238636;
+      border-color: #238636;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { background: #2ea043; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #status { margin-left: auto; font-size: 13px; color: #8b949e; }
+    #chart { flex: 1; width: 100%; min-height: 450px; }
+    .error { color: #f85149 !important; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label>Mã:</label>
+    <input type="text" id="symbol" value="VCB" />
+    <label>Khung:</label>
+    <select id="resolution">
+      <option value="1">1 phút</option>
+      <option value="5">5 phút</option>
+      <option value="15">15 phút</option>
+      <option value="30">30 phút</option>
+      <option value="60">1 giờ</option>
+      <option value="D" selected>Ngày</option>
+      <option value="W">Tuần</option>
+      <option value="M">Tháng</option>
+    </select>
+    <button id="btnLoad">Tải biểu đồ</button>
+    <span id="status">Đang khởi tạo...</span>
+  </div>
+  <div id="chart"></div>
+
+  <script type="module">
+    import { createChart } from 'https://unpkg.com/openalgo-charts@2.2.0/dist/openalgo-charts.mjs';
+
+    const chartEl = document.getElementById('chart');
+    const symbolInput = document.getElementById('symbol');
+    const resolutionSelect = document.getElementById('resolution');
+    const btnLoad = document.getElementById('btnLoad');
+    const statusEl = document.getElementById('status');
+
+    const chart = createChart(chartEl, {
+      timezone: 'Asia/Ho_Chi_Minh'
+    });
+
+    const candleSeries = chart.addSeries('candlestick');
+    const volumeSeries = chart.addSeries('histogram', { priceScaleId: 'volume' });
+
+    async function fetchBars(symbol, resolution, daysBack = 365) {
+      const to = Math.floor(Date.now() / 1000);
+      const from = to - daysBack * 86400;
+      const url = `https://dchart-api.vndirect.com.vn/dchart/history?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${to}`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP lỗi ${res.status}`);
+      const data = await res.json();
+
+      if (data.s !== 'ok' || !Array.isArray(data.t) || data.t.length === 0) {
+        throw new Error('Không có dữ liệu (mã sai hoặc khung không hỗ trợ)');
+      }
+
+      return data.t.map((t, i) => ({
+        time: t,
+        open: data.o[i],
+        high: data.h[i],
+        low: data.l[i],
+        close: data.c[i],
+        volume: data.v?.[i] ?? 0
+      }));
+    }
+
+    async function loadChart() {
+      const symbol = symbolInput.value.trim().toUpperCase();
+      const resolution = resolutionSelect.value;
+      if (!symbol) {
+        statusEl.textContent = 'Nhập mã cổ phiếu';
+        statusEl.className = 'error';
+        return;
+      }
+
+      btnLoad.disabled = true;
+      statusEl.textContent = `Đang tải ${symbol}...`;
+      statusEl.className = '';
+
+      try {
+        let days = 365;
+        if (['1','5'].includes(resolution)) days = 5;
+        else if (['15','30'].includes(resolution)) days = 20;
+        else if (resolution === '60') days = 60;
+        else if (resolution === 'W') days = 800;
+        else if (resolution === 'M') days = 1500;
+
+        const bars = await fetchBars(symbol, resolution, days);
+
+        candleSeries.setData(bars);
+        volumeSeries.setData(bars.map(b => ({
+          time: b.time,
+          value: b.volume,
+          color: b.close >= b.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)'
+        })));
+
+        chart.timeScale.fitContent();
+        statusEl.textContent = `${symbol} • ${bars.length} nến • ${new Date().toLocaleTimeString('vi-VN')}`;
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = 'Lỗi: ' + err.message;
+        statusEl.className = 'error';
+      } finally {
+        btnLoad.disabled = false;
+      }
+    }
+
+    btnLoad.addEventListener('click', loadChart);
+    symbolInput.addEventListener('keydown', e => e.key === 'Enter' && loadChart());
+
+    // Tự load lần đầu
+    loadChart();
+  </script>
+</body>
+</html>
